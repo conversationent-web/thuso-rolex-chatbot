@@ -1,13 +1,56 @@
 import makeWASocket, { useMultiFileAuthState, Browsers, DisconnectReason } from "@whiskeysockets/baileys"
+import express from "express"
+import pino from "pino"
+
+const app = express()
+const PORT = process.env.PORT || 3000
+
+// Keep Render alive
+app.get('/', (req, res) => {
+  res.send('Thuso Rolex Chatbot is Live ✅')
+})
+app.listen(PORT, () => console.log(`Server listening on port ${PORT}`))
 
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys')
-  const sock = makeWASocket({ auth: state, browser: Browsers.macOS("Desktop") })
+  
+  const sock = makeWASocket({ 
+    auth: state, 
+    browser: Browsers.macOS("Desktop"),
+    logger: pino({ level: "silent" })
+  })
+
   sock.ev.on('creds.update', saveCreds)
 
-  sock.ev.on('connection.update', (update) => {
+  sock.ev.on('connection.update', async (update) => {
+    const { connection, lastDisconnect, qr } = update
     console.log("Connection:", update)
+    
+    if(qr){
+      console.log("QR CODE:", qr)
+    }
+
+    if (connection === 'close') {
+      const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut
+      console.log('Connection closed, reconnecting:', shouldReconnect)
+      if (shouldReconnect) {
+        startBot()
+      }
+    } else if (connection === 'open') {
+      console.log('✅ Bot connected to WhatsApp!')
+    }
   })
+
+  // Pairing code if you want to use phone number
+  if (!sock.authState.creds.registered) {
+    const phoneNumber = process.env.PHONE_NUMBER
+    if (phoneNumber) {
+      setTimeout(async () => {
+        const code = await sock.requestPairingCode(phoneNumber)
+        console.log(`PAIRING CODE FOR ${phoneNumber}: ${code}`)
+      }, 3000)
+    }
+  }
 
   sock.ev.on('messages.upsert', async ({ messages }) => {
     try {
@@ -15,39 +58,17 @@ async function startBot() {
       if(!msg.message || msg.key.fromMe) return
       const jid = msg.key.remoteJid
       const text = msg.message.conversation || msg.message.extendedTextMessage?.text || msg.message.imageMessage?.caption || ""
-      const lower = text.toLowerCase()
-      if(!jid.endsWith('@g.us')) return
 
-      const metadata = await sock.groupMetadata(jid)
-      const sender = msg.key.participant
-      const senderIsAdmin = metadata.participants.find(p => p.id === sender)?.admin
-      const botIsAdmin = metadata.participants.find(p => p.id.includes(sock.user.id.split(':')[0]))?.admin
-
-      if(lower.includes("@thuso") || lower.includes("thuso")) {
-         await sock.sendMessage(jid, { text: `Molo! I am Thuso Rolex 🤖\nRules: No links, No status mentions, No porn.` }, { quoted: msg })
+      console.log(`Message from ${jid}: ${text}`)
+      
+      // Your anti-link / anti-hack logic here
+      if(text){
+        await sock.sendMessage(jid, { text: `Thuso Rolex: Received -> ${text}` })
       }
-
-      if(!botIsAdmin || senderIsAdmin) return
-
-      const isLink = /(https?:\/\/|www\.|chat\.whatsapp\.com|wa\.me|t\.me|discord\.gg)/i.test(lower)
-      const isPorn = ["porn","xxx","onlyfans","nudes","sex video"].some(w => lower.includes(w))
-      const mentionCount = msg.message.extendedTextMessage?.contextInfo?.mentionedJid?.length || 0
-      const isStatusTag = mentionCount > 4
-
-      if(isLink || isPorn || isStatusTag) {
-        await sock.sendMessage(jid, { delete: msg.key })
-        let reason = isLink? "Link not allowed" : isPorn? "Porn not allowed" : "Status tagging not allowed"
-        await sock.sendMessage(jid, { text: `🚫 Deleted by Thuso Rolex: ${reason}\n@${sender.split('@')[0]} please follow group rules.`, mentions: [sender] })
-      }
-    } catch(e){ console.log(e) }
-  })
-
-  sock.ev.on('group-participants.update', async (an) => {
-    try{
-      const groupId = an.id
-      const action = an.action
-      await sock.sendMessage(groupId, { text: `⚠️ *THUSO SECURITY ALERT*\n\nAction: ${action.toUpperCase()}\nUser: @${an.participants[0].split('@')[0]}\nBy: @${an.author.split('@')[0]}\n\nIf this was hacking, admins please take action! 🛡️`, mentions: [...an.participants, an.author] })
-    }catch{}
+    } catch(e) {
+      console.log("Error in messages:", e)
+    }
   })
 }
+
 startBot()
