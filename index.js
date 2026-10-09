@@ -7,7 +7,7 @@ import pino from "pino"
 
 const app = express()
 app.get('/', (req,res)=> res.send('Thuso Rolex Bot Live ✅'))
-app.listen(process.env.PORT || 3000, ()=> console.log("Server listening on port 10000"))
+app.listen(process.env.PORT || 10000, ()=> console.log("Server listening"))
 
 async function startBot(){
   const { state, saveCreds } = await useMultiFileAuthState('./auth')
@@ -15,8 +15,7 @@ async function startBot(){
   const sock = makeWASocket({
     auth: state,
     logger: pino({level:'silent'}),
-    browser: Browsers.ubuntu("Chrome"),
-    printQRInTerminal: false
+    browser: Browsers.ubuntu("Chrome")
   })
 
   sock.ev.on('creds.update', saveCreds)
@@ -24,7 +23,7 @@ async function startBot(){
   sock.ev.on('connection.update', async (u)=>{
     const {connection, lastDisconnect} = u
     console.log("Connection:", connection)
-    if(connection==='open') console.log("✅ BOT CONNECTED - Thuso Rolex Online!")
+    if(connection==='open') console.log("✅ CONNECTED!")
     if(connection==='close' && lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut){
       startBot()
     }
@@ -35,17 +34,11 @@ async function startBot(){
     if(num){
       setTimeout(async ()=>{
         try{
-          let code = await baileys.default ? await sock.requestPairingCode(num) : await sock.requestPairingCode(num)
-          console.log(`\n====================`)
-          console.log(`PAIRING CODE: ${code}`)
-          console.log(`FOR NUMBER: ${num}`)
-          console.log(`====================\n`)
-        }catch(e){
-          console.log("Pairing failed:", e.message)
-        }
-      }, 6000)
+          let code = await sock.requestPairingCode(num)
+          console.log(`PAIRING CODE: ${code} FOR ${num}`)
+        }catch(e){ console.log(e.message) }
+      }, 5000)
     }
   }
 }
-
 startBot()
