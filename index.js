@@ -1,12 +1,12 @@
 import baileys from "@whiskeysockets/baileys"
 const makeWASocket = baileys.default
-const { useMultiFileAuthState, Browsers, DisconnectReason } = baileys
+const { useMultiFileAuthState, Browsers } = baileys
 import express from "express"
 import pino from "pino"
 
 const app = express()
 app.get('/', (req,res)=> res.send('Bot Live ✅'))
-app.listen(process.env.PORT || 10000, ()=> console.log("Web server up"))
+app.listen(process.env.PORT || 10000)
 
 async function startBot(){
   const { state, saveCreds } = await useMultiFileAuthState('./auth')
@@ -17,41 +17,34 @@ async function startBot(){
   })
   sock.ev.on('creds.update', saveCreds)
 
-  let codeRequested = false
-
   sock.ev.on('connection.update', async (u)=>{
-    const { connection, lastDisconnect } = u
-    console.log("Connection:", connection)
-
-    if(connection === 'open'){
-      console.log("✅ CONNECTED TO WHATSAPP!")
+    console.log("Conn:", u.connection)
+    if(u.connection==='open'){
+      console.log("✅✅ WHATSAPP LINKED SUCCESS ✅✅")
     }
-
-    // ONLY request code when connecting and not yet registered
-    if(connection === 'connecting' && !state.creds.registered && !codeRequested){
-      codeRequested = true
-      let num = (process.env.PHONE_NUMBER||"").replace(/[^0-9]/g,'')
-      console.log("Requesting pairing code for:", num)
-      
-      // retry 3 times with delay
-      for(let i=0; i<3; i++){
-        try{
-          await new Promise(r=>setTimeout(r, 5000))
-          if(sock.ws.readyState !== 1) { console.log("Socket not ready, waiting..."); continue; }
-          let code = await sock.requestPairingCode(num)
-          console.log(`\n========================\nCODE: ${code}\nFOR NUMBER: ${num}\nENTER IN WHATSAPP NOW!\n========================\n`)
-          break
-        }catch(e){
-          console.log(`Attempt ${i+1} failed:`, e.message)
-        }
-      }
-    }
-
-    if(connection==='close'){
-      let shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut
-      console.log("Closed, reconnect?", shouldReconnect)
-      if(shouldReconnect) setTimeout(()=>startBot(), 3000)
+    if(u.connection==='close'){
+      console.log("Closed, will restart in 5 sec")
+      setTimeout(()=>startBot(), 5000)
     }
   })
+
+  if(!state.creds.registered){
+    const num = "27632456638" // your number
+    console.log("Waiting 10 sec then requesting code for", num)
+    setTimeout(async ()=>{
+      try{
+        const code = await sock.requestPairingCode(num)
+        console.log(`\n========================\nPAIR CODE: ${code}\nFOR: ${num}\nUSE WITHIN 30 SEC!\n========================\n`)
+      }catch(e){
+        console.log("Pair failed:", e.message, "- retrying in 10 sec")
+        setTimeout(async ()=>{
+          try{
+            const code2 = await sock.requestPairingCode(num)
+            console.log(`\nCODE RETRY: ${code2}\n`)
+          }catch(e2){ console.log("Retry failed:", e2.message) }
+        }, 10000)
+      }
+    }, 10000)
+  }
 }
 startBot()
