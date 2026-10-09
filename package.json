@@ -1,0 +1,8 @@
+{
+  "name": "thuso-rolex-chatbot",
+  "type": "module",
+  "dependencies": {
+    "@whiskeysockets/baileys": "latest",
+    "qrcode-terminal": "latest"
+  }
+}
