@@ -1,69 +1,46 @@
-import makeWASocket, { useMultiFileAuthState, DisconnectReason, Browsers } from "@whiskeysockets/baileys"
+import makeWASocket, { useMultiFileAuthState, Browsers, DisconnectReason } from "@whiskeysockets/baileys"
 import express from "express"
 import pino from "pino"
 
 const app = express()
-const PORT = process.env.PORT || 3000
+app.get('/', (req,res)=> res.send('Thuso Rolex Bot Live ✅'))
+app.listen(process.env.PORT || 3000)
 
-// Keep Render alive
-app.get('/', (req, res) => {
-  res.send('Thuso Rolex Chatbot is Live ✅')
-})
-app.listen(PORT, () => console.log(`Server listening on port ${PORT}`))
-
-async function startBot() {
-  const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys')
-
+async function startBot(){
+  const { state, saveCreds } = await useMultiFileAuthState('./auth')
   const sock = makeWASocket({
     auth: state,
-    logger: pino({ level: 'silent' }),
-    printQRInTerminal: false,
+    logger: pino({level:'silent'}),
     browser: Browsers.ubuntu("Chrome"),
-    syncFullHistory: false
+    printQRInTerminal: false
   })
-
-  // Pairing code - IMPORTANT FIX
-  if (!sock.authState.creds.registered) {
-    const phoneNumber = process.env.PHONE_NUMBER
-    if (phoneNumber) {
-      await new Promise(r => setTimeout(r, 5000))
-      try {
-        let cleanNumber = phoneNumber.replace(/[^0-9]/g, '')
-        console.log(`Requesting pairing code for ${cleanNumber}...`)
-        let code = await sock.requestPairingCode(cleanNumber)
-        console.log(`\n=====================================`)
-        console.log(`PAIRING CODE: ${code}`)
-        console.log(`NUMBER: ${cleanNumber}`)
-        console.log(`=====================================\n`)
-        console.log(`Go to WhatsApp > Linked Devices > Link with phone number`)
-      } catch(e) {
-        console.log("Pairing failed:", e.message)
-      }
-    }
-  }
 
   sock.ev.on('creds.update', saveCreds)
-
-  sock.ev.on('connection.update', async (update) => {
-    const { connection, lastDisconnect } = update
-    if (connection === 'open') {
-      console.log("✅ BOT CONNECTED - Thuso Rolex is Online!")
-    }
-    if (connection === 'close') {
-      let reason = lastDisconnect?.error?.output?.statusCode
-      if (reason!== DisconnectReason.loggedOut) {
-        console.log("Reconnecting...")
-        startBot()
-      }
+  
+  sock.ev.on('connection.update', async (u)=>{
+    const {connection, lastDisconnect} = u
+    console.log("Connection:", connection)
+    if(connection==='open') console.log("✅ BOT CONNECTED!")
+    if(connection==='close' && lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut){
+      startBot()
     }
   })
 
-  // --- YOUR BOT FEATURES HERE ---
-  // Add your anti-link, anti-porn, language code below this line
-  sock.ev.on('messages.upsert', async (m) => {
-    // Your existing bot logic
-    console.log("New message", m.messages[0]?.key?.remoteJid)
-  })
+  if(!state.creds.registered){
+    let num = (process.env.PHONE_NUMBER || "").replace(/[^0-9]/g,'')
+    if(num){
+      setTimeout(async ()=>{
+        try{
+          let code = await sock.requestPairingCode(num)
+          console.log(`\nPAIRING CODE FOR ${num}: ${code}\n`)
+        }catch(e){
+          console.log("Pairing failed:", e.message)
+        }
+      }, 5000)
+    } else {
+      console.log("Set PHONE_NUMBER in Render env vars! e.g. 27632456638")
+    }
+  }
 }
 
 startBot()
